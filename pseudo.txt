@@ -1,0 +1,25 @@
+
+
+Function GrowTree(X, Y)
+    m = new Tree(X, Y)
+    if Stop(X, Y) then
+        m.class = most common element of Y
+        return m
+    end
+    n, d = X.shape
+    Q∗ = ∞
+    for i = 0 to d do
+        sort X, Y along dimension i
+        for j = 0 to n − 1 do
+            split X, Y between Xj,i and Xj,i+1
+            call results Xleft, Xright
+            q = Q(Xleft, Yleft) + Q(Xright, Yright)
+            if q < Q∗ then
+                bestSplit = Xleft, Xright, Yleft, Yright
+            end
+        end
+    end
+    m.left = GrowTree(Xleft, Yleft)
+    m.right = GrowTree(Xright, Yright)
+    return m
+end
