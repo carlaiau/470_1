@@ -1,52 +1,51 @@
 import numpy as np
 from sklearn.datasets import load_iris
 
-dataset = load_iris()
 
-# Create a new numpy array length of dataset, but include extra column for target
-# This reduces the complexity of computing the number of classes, when doing a gini
-# calculation as we don't need to refer to the correct target class from the target array array
+
+"""
+Create a new 2d numpy array.
+Append the target class, for ever array of data labels. This reduces the
+complexity when computing the gini index, as we don't need to make reference
+to the dataset.target array
+"""
+dataset = load_iris()
 processed_data = np.empty([len(dataset.data), len(dataset.data[0]) + 1])
 for i in range(len(dataset.data)):
     processed_data[i] = np.append(dataset.data[i], dataset.target[i])
 
-"""Counts the number of each type of example in a dataset."""
+
+"""
+Counts the number of label classes for an array of data.
+Because the label is in the last index of every row, this is easy
+"""
 def class_counts(data):
     counts = {}  # a dictionary of label -> count.
     for row in data:
-        label = row[-1] # label is appended to the end
+        label = row[-1] #
         if label not in counts:
             counts[label] = 0
         counts[label] += 1
     return counts
 
-class Question:
-    """
-        A Question is used to partition a dataset.
-        This class records the column and the value of the question
-    """
-    def __init__(self, column, value):
-        self.column = column
+"""
+A Decision is used to partition a dataset.
+This class records the column/feature and the value "splitting" on
+"""
+class Decision:
+    def __init__(self, feature, value):
+        self.feature = feature
         self.value = value
-
-    def match(self, example):
-        # Compare the feature value in an example to the
-        # feature value in this question.
-        return example[self.column] >= self.value
-
-    def __repr__(self):
-        # This is just a helper method to print
-        # the question in a readable format.
-        condition = ">="
-        return "Is %s %s %s?" % (
-            header[self.column], condition, str(self.value))
+    def match(self, against):
+        return against[self.feature] >= self.value
 
 
+"""
+Partitions a dataset.
+For each row in the dataset, check if it matches the question.
+If so, add it to true_rows otherwise add it to false
+"""
 def partition(rows, question):
-    """Partitions a dataset.
-    For each row in the dataset, check if it matches the question.
-    If so, add it to true_rows otherwise add it to false
-    """
     true_rows, false_rows = [], []
     for row in rows:
         if question.match(row):
@@ -55,11 +54,11 @@ def partition(rows, question):
             false_rows.append(row)
     return true_rows, false_rows
 
-
+"""
+Calculate the Gini for a list of rows.
+"""
 def gini(rows):
-    """
-    Calculate the Gini Impurity for a list of rows.
-    """
+
     counts = class_counts(rows)
     impurity = 1
     for label in counts:
@@ -68,51 +67,46 @@ def gini(rows):
     return impurity
 
 
+"""
+Information Gain.
+The uncertainty of the starting node, minus the weighted impurity of
+two child nodes.
+"""
 def info_gain(left, right, current_uncertainty):
-    """Information Gain.
-    The uncertainty of the starting node, minus the weighted impurity of
-    two child nodes.
-    """
     p = float(len(left)) / (len(left) + len(right))
     return current_uncertainty - p * gini(left) - (1 - p) * gini(right)
 
-current_uncertainty = gini(processed_data)
-print(current_uncertainty)
-
+"""
+Find the best question to ask by iterating over every feature / value
+and calculating the information gain. Inefficient AF
+"""
 def find_best_split(rows):
-    """Find the best question to ask by iterating over every feature / value
-    and calculating the information gain."""
-    best_gain = 0  # keep track of the best information gain
-    best_question = None  # keep train of the column / Value that produced best gain
-    current_uncertainty = gini(rows)
-    num_features = len(rows[0]) - 1  # number of columns. This will change for us
+    optimal_gain = 0  # keep track of the best information gain
+    optimal_decision = None  # keep train of the column / Value that produced best gain
+    current_gini = gini(rows)
 
-    for col in range(n_features):  # for each feature, col here equals 1 feature
-
-        values = set([row[col] for row in rows])  # unique values in the column
-
-        for val in values:  # for each value
-            question = Question(col, val)
-
-            # try splitting the dataset
-            true_rows, false_rows = partition(rows, question)
-
-            # Skip this split if it doesn't divide the
-            # dataset.
+    # for each feature, col here equals 1 feature
+    for col in range( len( rows[0] ) - 1 ):
+        # unique values in the colum
+        values = set( [row[col] for row in rows] )
+        # for each value
+        for val in values:
+            d = Decision( col, val )
+            true_rows, false_rows = partition( rows, d )
+            # If one branch has len 0, nothing was split.
             if len(true_rows) == 0 or len(false_rows) == 0:
                 continue
 
             # Calculate the information gain from this split
-            gain = info_gain(true_rows, false_rows, current_uncertainty)
+            g = info_gain(true_rows, false_rows, current_gini)
 
             # If this gain is better than present best gain, record the gain, as well as the question
-            if gain >= best_gain:
-                best_gain, best_question = gain, question
+            if g >= optimal_gain:
+                optimal_gain, optimal_decision = g, d
 
-    return best_gain, best_question
+    return optimal_gain, optimal_decision
 
+best_g, best_d = find_best_split(processed_data)
 
-best_gain, best_question = find_best_split(processed_data)
-
-print(best_gain)
-print("col: %s, val: %s" % (best_q.column, best_question.value))
+print(best_g)
+print("col: %s, val: %s" % (best_d.feature, best_d.value))
