@@ -56,14 +56,25 @@ class Decision_Node:
         self.false_branch = false_branch
 
 
+
+
+
 class Tree:
 
+
+    """
+    Create a new 2d numpy array.
+    Append the target class, for ever array of data labels. This reduces the
+    complexity when computing the gini index, as we don't need to make reference
+    to the dataset.target array
+    """
     def __init__ (self, dataset):
         processed_data = np.empty( [len( dataset.data ), len( dataset.data[0] ) + 1] )
         for i in range( len( dataset.data ) ):
             processed_data[i] = np.append( dataset.data[i], dataset.target[i] )
         self.data = processed_data
         self.root_node = None
+        self.stopping_criteria = len( dataset.data) / 10 # 10% of dataset
 
     """
     Partitions a dataset.
@@ -124,8 +135,8 @@ class Tree:
                 q = Question( col, val )
                 true_rows, false_rows = self.partition( rows, q )
 
-                # If one branch has len 0, nothing was split.
-                if len( true_rows ) == 0 or len( false_rows ) == 0:
+                # If one branch has length less than our stopping_criteria then no split
+                if len( true_rows ) < self.stopping_criteria or len( false_rows ) < self.stopping_criteria:
                     continue
 
                 # Calculate the information gain from this split
@@ -139,13 +150,10 @@ class Tree:
         return most_gain, best_question
 
     """
-    Start the intial building of the tree by
-    with the class dataset but this cannot be called recrusively
+    Start the intial building of the tree, via calling the recursive function
     """
     def create(self):
         self.root_node = self.build(self.data)
-        for i in range(len(self.data)):
-            print(self.data[i])
     """
     Builds the tree.
     Recursive AF!
@@ -176,19 +184,18 @@ class Tree:
         return Decision_Node(question, true_branch, false_branch)
 
 
-    def start_dump(self):
-        self.dump(self.root_node, "")
+    def start_dump( self ):
+        self.dump( self.root_node, "" )
 
-    def dump( self, node, spacing=""):
+    def dump( self, node, spacing="" ):
 
-
-        # Base case: we've reached a leaf
+        # Base Case: Leaf!
         if isinstance(node, Leaf):
-            print (spacing + "Predict", node.predictions)
+            print ( spacing + "Predict", node.predictions )
             return
 
         # Print the question at this node
-        print (spacing + str(node.question))
+        print (spacing + str( node.question))
 
         # Call this function recursively on the true branch
         print (spacing + '--> True:')
@@ -205,7 +212,7 @@ class Tree:
     def classify( self, row, node):
 
 
-        # Base case: we've reached a leaf
+        # Base Case: Leaf!
         if isinstance(node, Leaf):
             return node.predictions
 
@@ -217,29 +224,8 @@ class Tree:
         else:
             return self.classify(row, node.false_branch)
 
-
-    def print_leaf(self, counts):
-        """A nicer way to print the predictions at a leaf."""
-        total = sum(counts.values()) * 1.0
-        probs = {}
-        for lbl in counts.keys():
-            probs[lbl] = str(int(counts[lbl] / total * 100)) + "%"
-        return probs
-
-
-
 if __name__ == '__main__':
-
-    """
-    Create a new 2d numpy array.
-    Append the target class, for ever array of data labels. This reduces the
-    complexity when computing the gini index, as we don't need to make reference
-    to the dataset.target array
-    """
     dataset = load_iris()
-
     my_tree = Tree(dataset)
-
     my_tree.create()
-
     my_tree.start_dump()
