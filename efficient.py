@@ -7,9 +7,10 @@ from sklearn.datasets import load_iris
 from sklearn.datasets import load_breast_cancer
 from sklearn.datasets import load_wine
 from sklearn.datasets import load_digits
+
 from sklearn.tree import DecisionTreeClassifier
 
-def class_counts( data):
+def class_counts( data ):
     """
     Helper Function
 
@@ -26,28 +27,11 @@ def class_counts( data):
         counts[label] += 1
     return counts
 
-def get_random_subsets(X, y, n_subsets, replacements=True):
-    """ Return random subsets (with replacements) of the data """
-    n_samples = np.shape(X)[0]
+class Row:
+    def __init(self, x, y):
+        self.x = x
+        self.y = y
 
-    # Concatenate x and y and do a random shuffle
-    X_y = np.concatenate((X, y.reshape((1, len(y))).T), axis=1)
-    np.random.shuffle(X_y)
-    subsets = []
-
-    # Uses 50% of training samples without replacements
-    subsample_size = int(n_samples // 2)
-    if replacements:
-        subsample_size = n_samples      # 100% with replacements
-    for _ in range(n_subsets):
-        idx = np.random.choice(
-            range(n_samples),
-            size=np.shape(range(subsample_size)),
-            replace=replacements)
-        X = X_y[idx][:, :-1]
-        y = X_y[idx][:, -1]
-        subsets.append([X, y])
-    return subsets
 
 class Question:
     """
@@ -113,14 +97,17 @@ class Tree():
     Then each branch of this initial decision node is recursively generated
     through the same process, until we reach a stopping criteria.
     """
-    def __init__(self, stopping_criteria = 0, root_node = None):
+    def __init__(self, stopping_criteria = 0, data = None, root_node = None):
         self.stopping_criteria = stopping_criteria
+        self.data = data
         self.root_node = None
+
+
 
     # Methods to match skilearn interface specification
     def get_params(self, deep=True):
         return {
-
+            "data": self.data,
             "stopping_criteria": self.stopping_criteria,
             "root_node": self.root_node
         }
@@ -207,7 +194,7 @@ class Tree():
         return most_gain, best_question
 
 
-    def fit( self, x, y, stopping_criteria = 0 ):
+    def fit( self, x, y ):
         """
         Importing training data and setting stopping criteria
 
@@ -220,10 +207,8 @@ class Tree():
         for i in range( len( x ) ):
             merged_train[i] = np.append( x[i], y[i] )
 
-        if stopping_criteria != 0:
-            self.stopping_criteria = stopping_criteria
-        else:
-            self.stopping_criteria = len( merged_train ) / 10
+        # 10% of dataset
+        self.stopping_criteria = len( merged_train) / 5
 
         # Start the intial building of the tree via recursive building
         self.root_node = self.build(merged_train)
@@ -269,15 +254,7 @@ class Tree():
         for i in range(n):
             if self.classify( x[i] , self.root_node ) == y[i]:
                 correct += 1
-
         print( "N: %s\tC: %s\t%.2f%%" % ( n, correct, ( correct / n * 100 ) ) )
-
-    # used by random forest as a 1 to 1
-    def random_forest_predict(self, x):
-        y_preds = []
-        for i in range( len(x) ):
-            y_preds.append( self.classify( x[i], self.root_node ) )
-        return y_preds
 
     def classify( self, row, node):
 
@@ -293,146 +270,44 @@ class Tree():
             return self.classify(row, node.false_branch)
 
 
-
-class RandomForest():
-
-    """
-    Random Forest classifier. Uses a collection of classification trees that
-    trains on random subsets of the data using a random subsets of the features.
-    Parameters:
-    """
-    def __init__( self, n_trees=10, max_features=None, stopping_criteria = 0):
-        self.n_trees = n_trees
-        self.max_features = max_features
-        self.stopping_criteria = stopping_criteria
-
-        # Initialize decision trees
-        self.the_forest = []
-        for tree in range(n_trees):
-            self.the_forest.append(Tree())
-
-
-    # Methods to match skilearn interface specification
-    def get_params(self, deep=True):
-        return {
-            "n_trees": self.n_trees,
-            "max_features": self.max_features,
-            "stopping_criteria": self.stopping_criteria
-        }
-
-    # Methods to match skilearn interface specification
-    def set_params(self, **parameters):
-        for parameter, value in parameters.items():
-            setattr(self, parameter, value)
-        return self
-
-
-    def fit( self, x, y ):
-        n_features = np.shape(x)[1]
-        if not self.max_features:
-            self.max_features = int( np.sqrt( n_features ) )
-
-        # Choose one random subset of the data for each tree
-        subsets = get_random_subsets( x, y, self.n_trees )
-
-        for i in range( self.n_trees ):
-            x_subset, y_subset = subsets[i]
-
-            # Feature bagging (select random subsets of the features)
-            idx = np.random.choice( range( n_features ), size=self.max_features, replace=True )
-
-            # Save the indices of the features for prediction
-            self.the_forest[i].feature_indices = idx
-
-            # Choose the features corresponding to the indices
-            x_subset = x_subset[:, idx]
-
-            # Fit the tree to the data
-            self.the_forest[i].fit( x_subset, y_subset, stopping_criteria = self.stopping_criteria )
-
-    def predict( self, x):
-
-        # Height number of samples, width number of trees
-        predictions = np.empty( ( x.shape[0], len( self.the_forest ) ) )
-
-        # Let each tree make a prediction on the data
-        for i, tree in enumerate( self.the_forest ):
-            # Indices of the features that the tree has trained on
-            idx = tree.feature_indices
-
-            prediction = tree.random_forest_predict( x[:, idx] )
-
-            predictions[:, i] = prediction
-
-        predictions = np.array(predictions)
-
-
-
-        top_voted = np.empty( predictions.shape[0] )
-
-        # We vote!
-        for i in range( len( predictions ) ):
-            votes = np.unique(predictions[i], return_counts=True )
-            if len( votes[0] ) == 1: # all Trees agree on one class
-                top_class = votes[0][0];
-            else:
-                top_class_votes = 0
-                top_class_index = 0
-                for j in range( len( votes[1] ) ):
-                    if votes[1][j] > top_class_votes:
-                        top_class_votes = votes[1][j]
-                        top_class_index = j
-
-                top_class = votes[0][top_class_index]
-            top_voted[i] = top_class
-
-        return top_voted
-
-
-
-
-    def score( self, x, y):
-        predictions = self.predict( x )
-        n = len(x)
-        correct = 0;
-        for i in range(n):
-            if predictions[i] == y[i]:
-                correct += 1
-
-        return correct / n
-
-
-
-if __name__ == '__main__':
-    #dataset = load_breast_cancer()
-    dataset = load_iris()
-    #dataset = load_wine()
-    #dataset = load_digits()
-
-    #x_train, x_test, y_train, y_test = train_test_split(dataset.data, dataset.target, test_size=0.1)
-
-    #forest = RandomForest()
-    #forest.fit(x_train, y_train)
-
-    #forest.score(x_test, y_test)
-
-    for i in range(10):
-        if i % 3 == 0:
-            print("")
-            clf = RandomForest()
-            who = "RF"
-        elif i % 3 == 1:
+def run_tests(dataset):
+    use_mine = 0
+    for i in range(4):
+        if i % 2 != 0:
             clf = Tree()
-            who = "DT"
+            who = "Me"
         else:
             clf = DecisionTreeClassifier()
             clf.set_params
             who = "SK"
 
-        samples = 50
-        cv = ShuffleSplit(n_splits= samples, test_size=0.2)
+        number_of_runs = 2
+        cv = ShuffleSplit(n_splits=number_of_runs, test_size=0.2)
         tic = time.clock()
         scores = cross_val_score(clf, dataset.data, dataset.target, cv=cv)
         toc = time.clock()
         # print(scores)
-        print("%s. Accuracy: %0.2f (+/- %0.2f) Time: %0.4f" % (who, scores.mean(), scores.std() * 2, ( toc - tic) /samples ))
+        print("%s. Accuracy: %0.2f (+/- %0.2f) Time per run : %0.4f" % (who, scores.mean(), scores.std() * 2, (toc - tic)/number_of_runs ))
+
+
+if __name__ == '__main__':
+
+    print("Iris 10 runs")
+    dataset = load_iris()
+    run_tests(dataset)
+    print("")
+
+    print("Wine 10 runs")
+    dataset = load_wine()
+    run_tests(dataset)
+    print("")
+
+    print("Digits 10 runs")
+    dataset = load_digits()
+    run_tests(dataset)
+    print("")
+
+    print("Cancer 10 runs")
+    dataset = load_breast_cancer()
+    run_tests(dataset)
+    print("")
