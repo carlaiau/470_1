@@ -1,5 +1,7 @@
 import numpy as np
 import time
+import math
+import random
 from sklearn.model_selection import ShuffleSplit
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import train_test_split
@@ -26,6 +28,21 @@ def class_counts( data):
         counts[label] += 1
     return counts
 
+def draw(weights):
+    choice = random.uniform( 0, sum( weights ) )
+    i = 0
+    for weight in weights:
+        choice -= weight
+        if choice <= 0:
+            return i
+        i += 1
+
+# normalize a distribution
+def normalize(weights):
+    norm = sum(weights)
+    return tuple(m / norm for m in weights)
+
+# REVIEW THIS CARL
 def get_random_subsets(X, y, n_subsets, replacements=True):
     """ Return random subsets (with replacements) of the data """
     n_samples = np.shape(X)[0]
@@ -113,14 +130,16 @@ class Tree():
     Then each branch of this initial decision node is recursively generated
     through the same process, until we reach a stopping criteria.
     """
-    def __init__(self, stopping_criteria = 0, root_node = None):
+    def __init__(self, stopping_criteria = 0, is_stump = False, root_node = None, indexs = []):
         self.stopping_criteria = stopping_criteria
         self.root_node = None
+        self.is_stump = is_stump
+        if is_stump:
+            self.indexs = indexs
 
     # Methods to match skilearn interface specification
     def get_params(self, deep=True):
         return {
-
             "stopping_criteria": self.stopping_criteria,
             "root_node": self.root_node
         }
@@ -174,7 +193,7 @@ class Tree():
         return info_gain
 
 
-    def find_best_split( self, rows ):
+    def find_best_split( self, rows):
         """
         Find the best question to ask by iterating over every
         feature / value and calculating the information gain
@@ -200,6 +219,7 @@ class Tree():
                 g = self.info_gain( true_rows, false_rows, current_gini )
 
                 # If this gain is better than present best gain, record
+
                 if g >= most_gain:
                     most_gain = g
                     best_question = q
@@ -207,7 +227,40 @@ class Tree():
         return most_gain, best_question
 
 
-    def fit( self, x, y, stopping_criteria = 0 ):
+    def find_weak_split( self, rows):
+        """
+        Find the best question to ask by iterating over every
+        feature / value and calculating the information gain
+        """
+        most_gain = 0  # keep track of the best information gain
+        best_question = None  # keep train of the column / Value that produced best gain
+        current_gini = self.gini( rows )
+
+        # for each feature, col here equals 1 feature
+        for col in range( len( rows[0] ) - 1 ):
+            # unique values in the colum
+            values = set( [row[col] for row in rows] )
+            # for each value
+            for val in values:
+                q = Question( col, val )
+                true_rows, false_rows = self.partition( rows, q )
+
+                # If one branch has length less than our stopping_criteria then no split
+                if len( true_rows ) < self.stopping_criteria or len( false_rows ) < self.stopping_criteria:
+                    continue
+
+                # Calculate the information gain from this split
+                g = self.info_gain( true_rows, false_rows, current_gini )
+
+                # If this gain is better than present best gain, record
+
+                if g >= current_gini:
+                    return g, q
+
+        return g, q
+
+
+    def fit( self, x, y, stopping_criteria=0):
         """
         Importing training data and setting stopping criteria
 
@@ -216,17 +269,44 @@ class Tree():
         merged_train[i] = [ x[i][0], x[i][1], x[i][2], x[i][3], y[i] ]
         This reduces the complexity because we don't have to pass on two arrays
         """
-        merged_train = np.empty( [len( x ), len( x[0] ) + 1] )
-        for i in range( len( x ) ):
-            merged_train[i] = np.append( x[i], y[i] )
+        if self.is_stump:
+            merged_train = np.empty([len(self.indexs), len(x[0]) + 1])
+            for i in range( len(self.indexs)):
+                merged_train[i] = np.append( x[ self.indexs[ i ] ], y[ self.indexs[ i ] ] )
+        else:
+            merged_train = np.empty([len(x), len(x[0]) + 1])
+            for i in range(len(x)):
+                merged_train[i] = np.append( x[i], y[i])
+
 
         if stopping_criteria != 0:
             self.stopping_criteria = stopping_criteria
         else:
             self.stopping_criteria = len( merged_train ) / 10
 
-        # Start the intial building of the tree via recursive building
-        self.root_node = self.build(merged_train)
+        if not self.is_stump:
+            self.root_node = self.build(merged_train)
+
+        else:
+            self.root_node = self.build_stump(merged_train)
+
+
+    def build_stump(self, rows):
+
+        """
+        Builds the tree
+        Non recursive, used for the stumps!
+        """
+        gain, question = self.find_weak_split( rows)
+
+        # Partition dataset based on best question
+        true_rows, false_rows = self.partition( rows, question )
+        # Build the true branch
+        true_branch = Node(0, true_rows )
+        # Build the false branch
+        false_branch = Node(0, false_rows )
+        # Return the Decision node, with references to question and branchs
+        return Node(1, None, question, true_branch, false_branch)
 
 
     def build( self, rows ):
@@ -255,6 +335,10 @@ class Tree():
         return Node(1, None, question, true_branch, false_branch)
 
 
+
+
+
+
     def score(self, x, y):
         n = len(x)
         correct = 0;
@@ -273,11 +357,12 @@ class Tree():
         print( "N: %s\tC: %s\t%.2f%%" % ( n, correct, ( correct / n * 100 ) ) )
 
     # used by random forest as a 1 to 1
-    def random_forest_predict(self, x):
+    def get_predictions(self, x):
         y_preds = []
         for i in range( len(x) ):
-            y_preds.append( self.classify( x[i], self.root_node ) )
+            y_preds.append( int( self.classify( x[i], self.root_node ) ) )
         return y_preds
+
 
     def classify( self, row, node):
 
@@ -360,7 +445,7 @@ class RandomForest():
             # Indices of the features that the tree has trained on
             idx = tree.feature_indices
 
-            prediction = tree.random_forest_predict( x[:, idx] )
+            prediction = tree.get_predictions( x[:, idx] )
 
             predictions[:, i] = prediction
 
@@ -403,19 +488,129 @@ class RandomForest():
 
 
 
+class AdaBoost():
+    """
+    Boosting method that uses a number of weak classifiers in
+    ensemble to make a strong classifier. This implementation uses decision
+    stumps, which is a one level Decision Tree.
+    """
+    def __init__(self, n_stumps=50):
+        self.n_stumps = n_stumps
+        # array of alphas, one for each stump
+        self.stumps = [None] * self.n_stumps
+        self.alphas = [0] * self.n_stumps
+        self.best_stump = None
+
+    # Methods to match skilearn interface specification
+    def get_params(self, deep=True):
+        return {
+            "n_stumps": self.n_stumps
+
+        }
+
+    # Methods to match skilearn interface specification
+    def set_params(self, **parameters):
+        for parameter, value in parameters.items():
+            setattr(self, parameter, value)
+        return self
+
+    def fit(self, x, y):
+        n_samples, n_features = np.shape(x)
+
+        # Initalise weights to normalised value
+        self.weights = np.full( n_samples, ( 1 / n_samples))
+        # Iterate through classifiers
+        for i in range(self.n_stumps):
+
+            random_indexs = []
+            for j in range( int(len( x ) / 2) ):
+                random_indexs.append( draw( self.weights) )
+
+            stump = Tree(is_stump=True, indexs=random_indexs, stopping_criteria=0)
+
+            stump.fit(x, y)
+
+
+            # Use model to give us predictions
+            predictions = stump.get_predictions(x)
+
+            # Make sure that errors is the same length as y
+            errors = np.zeros([len(x)])
+
+            for j in range( len( random_indexs ) ):
+                if predictions[j] == y[ random_indexs[j] ]:
+                    errors[random_indexs[j]] = 1
+                else:
+                    errors[random_indexs[j]] = -1
+
+
+            sum_error = sum(w for (z, w) in zip(errors, self.weights) if z < 0)
+            new_alpha = 0.5 * math.log( ( 1 - sum_error) / (.0001 + sum_error))
+
+            self.alphas[i] = new_alpha
+            self.stumps[i] = stump
+
+            self.weights = normalize( [ w * math.exp( -self.alphas[i] * p)
+                               for (w, p) in zip(self.weights, errors)]) # <<<<
+
+
+
+    def predict(self, x, y):
+
+        predictions = self.stumps[self.n_stumps - 1].get_predictions(x)
+
+        #  print(self.stumps[self.n_stumps - 1].score( x, y))
+
+
+
+    def score(self, x, y):
+        return self.stumps[self.n_stumps - 1].score(x, y)
+
+
+
+
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
     #dataset = load_breast_cancer()
     dataset = load_iris()
     #dataset = load_wine()
     #dataset = load_digits()
 
-    #x_train, x_test, y_train, y_test = train_test_split(dataset.data, dataset.target, test_size=0.1)
+
+    # Make this into a two class problem
+    y_2c = []
+    x_2c = []
+    for i in range(len(dataset.target)):
+        if  dataset.target[i] == 0 or dataset.target[i] == 1:
+            y_2c.append(dataset.target[i])
+            x_2c.append(dataset.data[i])
+
+    ada = AdaBoost()
+    #ada.fit(x_train_2c, y_train_2c)
+
+    #ada.predict(x_test_2c, y_test_2c)
+
+    samples = 20
+    cv = ShuffleSplit(n_splits=samples, test_size=0.3)
+
+    scores = cross_val_score(ada, x_2c, y_2c, cv=cv)
+    print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
 
     #forest = RandomForest()
     #forest.fit(x_train, y_train)
 
     #forest.score(x_test, y_test)
 
+
+
+    '''
     for i in range(10):
         if i % 3 == 0:
             print("")
@@ -434,5 +629,6 @@ if __name__ == '__main__':
         tic = time.clock()
         scores = cross_val_score(clf, dataset.data, dataset.target, cv=cv)
         toc = time.clock()
-        # print(scores)
-        print("%s. Accuracy: %0.2f (+/- %0.2f) Time: %0.4f" % (who, scores.mean(), scores.std() * 2, ( toc - tic) /samples ))
+        #print(scores)
+        #print("%s. Accuracy: %0.2f (+/- %0.2f) Time: %0.4f" % (who, scores.mean(), scores.std() * 2, ( toc - tic) /samples ))
+    '''

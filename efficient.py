@@ -27,11 +27,6 @@ def class_counts( data ):
         counts[label] += 1
     return counts
 
-class Row:
-    def __init(self, x, y):
-        self.x = x
-        self.y = y
-
 
 class Question:
     """
@@ -61,14 +56,8 @@ class Node:
     classes and the number of times this class appears in the training data
     reaching this leaf.
     """
-    def __init__(
-        self,
-        is_decision = 0,
-        rows = None,
-        question = None,
-        true_branch = None,
-        false_branch = None
-    ):
+    def __init__( self, is_decision = 0, rows = None, question = None,
+        true_branch = None, false_branch = None ):
         if is_decision is 1:
             self.is_decision = 1
             self.question = question
