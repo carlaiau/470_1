@@ -9,7 +9,9 @@ from sklearn.datasets import load_iris
 from sklearn.datasets import load_breast_cancer
 from sklearn.datasets import load_wine
 from sklearn.datasets import load_digits
+
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import AdaBoostClassifier
 
 def class_counts( data):
     """
@@ -232,17 +234,18 @@ class Tree():
         Find the best question to ask by iterating over every
         feature / value and calculating the information gain
         """
-        most_gain = 0  # keep track of the best information gain
-        best_question = None  # keep train of the column / Value that produced best gain
-        current_gini = self.gini( rows )
-
-        # for each feature, col here equals 1 feature
+        # Need to randomise order of featres looked at
+        rand_cols = np.random.choice(len( rows[0] ) - 1, len( rows[0] ) - 1, replace=False)
+        current_gini = self.gini(rows)
         for col in range( len( rows[0] ) - 1 ):
             # unique values in the colum
-            values = set( [row[col] for row in rows] )
+            values = np.unique([row[rand_cols[col]] for row in rows])
+            rand_values = np.random.choice(len(values), len(values), replace=False)
             # for each value
-            for val in values:
-                q = Question( col, val )
+
+            for val in range(len(values)):
+                random_value = values[rand_values[val]]
+                q = Question(rand_cols[col], random_value )
                 true_rows, false_rows = self.partition( rows, q )
 
                 # If one branch has length less than our stopping_criteria then no split
@@ -250,11 +253,12 @@ class Tree():
                     continue
 
                 # Calculate the information gain from this split
-                g = self.info_gain( true_rows, false_rows, current_gini )
 
-                # If this gain is better than present best gain, record
+                g = self.info_gain( true_rows, false_rows, current_gini)
 
-                if g >= current_gini:
+                # If the split gives a 10% or better increase in info
+
+                if g + current_gini > 0.5 :
                     return g, q
 
         return g, q
@@ -333,11 +337,6 @@ class Tree():
 
         # Return the Decision node, with references to question and branchs
         return Node(1, None, question, true_branch, false_branch)
-
-
-
-
-
 
     def score(self, x, y):
         n = len(x)
@@ -494,7 +493,7 @@ class AdaBoost():
     ensemble to make a strong classifier. This implementation uses decision
     stumps, which is a one level Decision Tree.
     """
-    def __init__(self, n_stumps=50):
+    def __init__(self, n_stumps=100):
         self.n_stumps = n_stumps
         # array of alphas, one for each stump
         self.stumps = [None] * self.n_stumps
@@ -514,19 +513,19 @@ class AdaBoost():
             setattr(self, parameter, value)
         return self
 
-    def fit(self, x, y):
+    def fit(self,x,y):
         n_samples, n_features = np.shape(x)
 
         # Initalise weights to normalised value
-        self.weights = np.full( n_samples, ( 1 / n_samples))
+        self.weights = np.full(n_samples, (1/n_samples))
         # Iterate through classifiers
         for i in range(self.n_stumps):
 
             random_indexs = []
-            for j in range( int(len( x ) / 2) ):
-                random_indexs.append( draw( self.weights) )
+            for j in range(int(len(x))):
+                random_indexs.append(draw(self.weights))
 
-            stump = Tree(is_stump=True, indexs=random_indexs, stopping_criteria=0)
+            stump = Tree(is_stump=True, indexs=random_indexs, stopping_criteria=1)
 
             stump.fit(x, y)
 
@@ -537,8 +536,8 @@ class AdaBoost():
             # Make sure that errors is the same length as y
             errors = np.zeros([len(x)])
 
-            for j in range( len( random_indexs ) ):
-                if predictions[j] == y[ random_indexs[j] ]:
+            for j in range(len(random_indexs)):
+                if predictions[j] == y[ random_indexs[j]]:
                     errors[random_indexs[j]] = 1
                 else:
                     errors[random_indexs[j]] = -1
@@ -557,18 +556,58 @@ class AdaBoost():
 
     def predict(self, x, y):
 
-        predictions = self.stumps[self.n_stumps - 1].get_predictions(x)
+        #predictions = self.stumps[self.n_stumps - 1].get_predictions(x)
 
-        #  print(self.stumps[self.n_stumps - 1].score( x, y))
+        alpha_sum = 0
+        for i in range(self.n_stumps):
+            #print(self.alphas[i])
+            alpha_sum += self.alphas[i]
+
+        all_results = []
+        for i in range(self.n_stumps):
+            pred_y = self.stumps[i].get_predictions(x)
+            for j in range(len(pred_y)):
+                if pred_y[j] == 0:
+                    pred_y[j] = -1
+                pred_y[j] *= self.alphas[i]/alpha_sum
+            all_results.append(pred_y)
+
+        col_totals = [sum(x) for x in zip(*all_results)]
+
+        predictions = []
+        for i in range(len(col_totals)):
+            if(col_totals[i] > 0):
+                predictions.append(1)
+            else:
+                predictions.append(0)
+
+        #print(predictions)
+        count_correct = 0
+        for i in range(len(predictions)):
+            if predictions[i] == y[i]:
+                count_correct += 1
+
+        return(count_correct / len(y))
+
 
 
 
     def score(self, x, y):
-        return self.stumps[self.n_stumps - 1].score(x, y)
+        return self.predict(x, y)
+        #return self.stumps[self.n_stumps - 1].score(x, y)
 
 
 
 
+
+def make_two_class(x, y):
+    y_2c = []
+    x_2c = []
+    for i in range(len(y)):
+        if y[i] == 0 or y[i] == 1:
+            y_2c.append(y[i])
+            x_2c.append(x[i])
+    return np.array(x_2c), np.array(y_2c)
 
 
 
@@ -584,34 +623,44 @@ if __name__ == '__main__':
     #dataset = load_digits()
 
 
-    # Make this into a two class problem
-    y_2c = []
-    x_2c = []
-    for i in range(len(dataset.target)):
-        if  dataset.target[i] == 0 or dataset.target[i] == 1:
-            y_2c.append(dataset.target[i])
-            x_2c.append(dataset.data[i])
 
-    ada = AdaBoost()
-    #ada.fit(x_train_2c, y_train_2c)
-
-    #ada.predict(x_test_2c, y_test_2c)
-
-    samples = 20
-    cv = ShuffleSplit(n_splits=samples, test_size=0.3)
-
-    scores = cross_val_score(ada, x_2c, y_2c, cv=cv)
-    print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
 
     #forest = RandomForest()
     #forest.fit(x_train, y_train)
 
     #forest.score(x_test, y_test)
 
+    '''
+    x_train, x_test, y_train, y_test = train_test_split(
+        dataset.data, dataset.target, test_size=0.2)
+    x, y = make_two_class(x_train, y_train)
+
+    clf = AdaBoost()
+    clf.fit(x,y)
+
+    x, y = make_two_class(x_test, y_test)
+    clf.predict(x, y)
 
 
+
+    exit()
+    
+
+    x, y = make_two_class(dataset.data, dataset.target)
+    samples = 20
+    who = "AB"
+    clf = AdaBoost()
+    cv = ShuffleSplit(n_splits=samples, test_size=0.3)
+    scores = cross_val_score(clf, x, y, cv=cv)
+    print(scores)
+    print("%s. Accuracy: %0.2f (+/- %0.2f)" % (who, scores.mean(), scores.std() * 2))
+
+
+
+    exit()
     '''
     for i in range(10):
+        x, y = make_two_class(dataset.data, dataset.target)
         if i % 3 == 0:
             print("")
             clf = RandomForest()
@@ -620,15 +669,13 @@ if __name__ == '__main__':
             clf = Tree()
             who = "DT"
         else:
-            clf = DecisionTreeClassifier()
-            clf.set_params
-            who = "SK"
+            who = "AB"
+            clf = AdaBoost()
 
         samples = 50
         cv = ShuffleSplit(n_splits= samples, test_size=0.2)
         tic = time.clock()
-        scores = cross_val_score(clf, dataset.data, dataset.target, cv=cv)
+        scores = cross_val_score(clf, x, y, cv=cv)
         toc = time.clock()
-        #print(scores)
-        #print("%s. Accuracy: %0.2f (+/- %0.2f) Time: %0.4f" % (who, scores.mean(), scores.std() * 2, ( toc - tic) /samples ))
-    '''
+
+        print("%s. Accuracy: %0.2f (+/- %0.2f) Time: %0.4f" % (who, scores.mean(), scores.std() * 2, ( toc - tic) /samples ))
