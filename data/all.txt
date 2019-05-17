@@ -1,0 +1,37 @@
+Binary - 100 Samples
+
+Iris
+Tree            1.00 (+/- 0.00) 0.0166
+RandomForest    0.99 (+/- 0.06) 0.0478
+AdaBoost        0.99 (+/- 0.04) 0.3809
+
+Cancer
+Tree            0.90 (+/- 0.04) 16.8894
+RandomForest    0.95 (+/- 0.04) 8.4978
+AdaBoost        0.88 (+/- 0.08) 6.7808
+
+Wine
+Tree            0.93 (+/- 0.10) 0.2672
+RandomForest    0.96 (+/- 0.09) 0.3409
+AdaBoost        0.92 (+/- 0.11) 1.0264
+
+Digits
+Tree            0.98 (+/- 0.02) 0.9075
+RandomForest    1.00 (+/- 0.01) 0.9059
+AdaBoost        0.99 (+/- 0.03) 4.1443
+
+
+
+Non Binary - 100 samples
+
+Iris
+Tree            0.94 (+/- 0.07) 0.0695
+RandomForest    0.93 (+/- 0.09) 0.1986
+
+Wine
+Tree            0.84 (+/- 0.13) 0.7077
+RandomForest    0.94 (+/- 0.08) 0.7758
+
+Digits
+Tree            0.55 (+/- 0.07) 5.2978
+RandomForest    0.82 (+/- 0.06) 5.4493
